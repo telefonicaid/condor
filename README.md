@@ -1,2 +1,2 @@
-# condor
+# Condor
 Tools to help connecting the unconnected
