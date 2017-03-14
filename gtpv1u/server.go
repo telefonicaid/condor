@@ -15,7 +15,7 @@ type Server struct {
 }
 
 type Service interface {
-	GTPPacketHandle(req * Packet, conn * net.UDPConn, addr * net.Addr) error
+	GTPPacketHandle(req * Packet, conn * net.UDPConn, addr net.Addr) error
 }
 
 func NewServer(addr string, service Service) * Server {
