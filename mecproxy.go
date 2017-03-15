@@ -10,6 +10,8 @@ import (
 "flag"
 "fmt"
 "net"
+//"github.com/songgao/water"
+"github.com/telefonicaid/condor/gtpv1u"
 )
 
 var addressPortPtr * string
@@ -26,6 +28,8 @@ var SGWAddrPtr *net.UDPAddr
 var ENBAddrPtr *net.UDPAddr 
 var SGWConnPtr *net.UDPConn
 var ENBConnPtr *net.UDPConn
+
+//var TUNIntPtr *water.Interface
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage: mecproxy -stderrthreshold=[INFO|WARN|FATAL] -log_dir=[string]\n", )
@@ -47,6 +51,20 @@ func init() {
 	
 	flag.Parse()
 }
+
+func handleGTPPacket(b []byte)(){
+	gtppacket,err := gtpv1u.DecodePacket(b)
+		if err != nil {
+			glog.Error("Error:",err.Error())
+		}
+
+	glog.Info("Packet ", gtppacket)
+
+
+//	TUNIntPtr.Write(gtppacket.Content) 
+
+}
+
 
 func setupUDPProxy() bool {
 
@@ -88,6 +106,7 @@ func setupUDPProxy() bool {
 	return true;
 }
 
+
 func runUDPProxy(){
 	var buffer [1500] byte
 
@@ -102,8 +121,10 @@ func runUDPProxy(){
 		}
 
 		glog.Info("Read ", nbytes, " from ", clientaddr)
-		glog.Info("Read ", nbytes, " from ", ENBAddrPtr)
-		glog.Info("Read ", nbytes, " from ", SGWAddrPtr)
+
+		//func DecodePacket(b []byte) (p * Packet, err error) {
+		go handleGTPPacket(buffer[0:nbytes])
+		
 
 		if clientaddr.String() == ENBAddrPtr.String() {
 			glog.Info("Packet from the ENB")
@@ -149,15 +170,48 @@ func runUDPProxy(){
 				glog.Error("Error:",err.Error())
 			}
 
-			glog.Info("wrote ", wnbytes, " to ", ENBAddrPtr)
+			glog.Info("wrote ", wnbytes, " to ", ENBAddrPtr)	
 
 		}
 
 	}
 }
+/*
+
+func setupTUN() bool{
+	ifce, err := water.New(water.Config{
+		DeviceType: water.TUN,
+	})
+	if err != nil {
+		glog.Error("Error:",err.Error())
+		return false
+	}
+
+	TUNIntPtr = ifce
+
+	return true
+}
+
+func runTUNproxy(){
+	// TODO check the input size
+	packet := make([] byte,2000) 
+	for {
+		glog.Info("Waiting for packet on tun interface ", TUNIntPtr.Name())
+		n, err := TUNIntPtr.Read(packet)
+		if err != nil {
+			glog.Error("Error:",err.Error())
+		}
+
+		glog.Info("Packet received on TUN interface", packet[0:n])
+	}
+}*/
 
 func main() {
 	glog.Info("MECProxy by Yan Grunenberger <yan.grunenberger@telefonica.com>")
+
+/*	if setupTUN(){
+		//go runTUNproxy()
+	}*/
 
 	if (setupUDPProxy()){
 		glog.Info("Listening on port ", * listenPortPtr)
