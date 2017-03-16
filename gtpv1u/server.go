@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 	"sync"
-	"fmt"
+	//"fmt"
 )
 
 type Server struct {
@@ -15,7 +15,8 @@ type Server struct {
 }
 
 type Service interface {
-	GTPPacketHandle(req * Packet, conn * net.UDPConn, addr * net.Addr) error
+	GTPPacketHandle(req * Packet, b * []byte, conn * net.UDPConn, addr * net.Addr)
+	WrongGTPPacketHandle(b * []byte, conn * net.UDPConn, addr * net.Addr)
 }
 
 func NewServer(addr string, service Service) * Server {
@@ -28,7 +29,7 @@ func NewServer(addr string, service Service) * Server {
 	return s
 }
 
-func (s *Server) ListenAndServe(errch chan error) error {
+func (s *Server) ListenAndServe() error {
 	addr, err := net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
 		return err
@@ -64,11 +65,12 @@ func (s *Server) ListenAndServe(errch chan error) error {
 
 			pac,err := DecodePacket(b)
 			if err != nil {
-				errch <- fmt.Errorf("[GTP Packet Decode] %s", err.Error())
+				s.service.WrongGTPPacketHandle(&b, conn, &addr)
 				return
+			} else {
+				s.service.GTPPacketHandle(pac, &b, conn, &addr)
 			}
 
-			s.service.GTPPacketHandle(pac, conn, addr)
 		}(b[:n], addr)
 	}
 	return nil
