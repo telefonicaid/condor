@@ -12,17 +12,34 @@ import (
 "net"
 //"github.com/songgao/water"
 "github.com/telefonicaid/condor/gtpv1u"
+"github.com/fkgi/extnet"
 )
 
+// command line parameters
+var sctpListenaddressPtr * string
+var sctpPortPtr * int
 var addressPortPtr * string
 var listenPortPtr * int
+
+var mmeAddressPtr *string
+var mmePortPtr * int
 var sgwAddressPtr *string
 var sgwPortPtr * int
+
+var enbMMEAddressPtr *string
+var enbMMEPortPtr *int
 var enbAddressPtr *string
 var enbPortPtr * int
 
+// handle on connections, address points
 var UDPProxyAddrPtr *net.UDPAddr 
 var UDPProxyConnPtr * net.UDPConn
+
+var localMMEAddrPtr *extnet.SCTPAddr
+var localMMEListenPtr *extnet.SCTPListener
+
+var remoteMMEAddrPtr *extnet.SCTPAddr
+var enbMMEAddrPtr *extnet.SCTPAddr
 
 var SGWAddrPtr *net.UDPAddr 
 var ENBAddrPtr *net.UDPAddr 
@@ -40,14 +57,23 @@ func usage() {
 func init() {
 	flag.Usage = usage
 
-	addressPortPtr = flag.String("l", "0.0.0.0", "listening interface for incoming GTP traffic")
-	listenPortPtr = flag.Int("p", 2153, "listening port for incoming GTP traffic")
+	sctpListenaddressPtr = flag.String("lsctp", "0.0.0.0", "listening interface for incoming SCTP traffic")
+	sctpPortPtr = flag.Int("psctp", 36412, "listening port for incoming SCTP traffic")
+
+	addressPortPtr = flag.String("lgtp", "0.0.0.0", "listening interface for incoming GTP traffic")
+	listenPortPtr = flag.Int("pgtp", 2152, "listening port for incoming GTP traffic")
+
+	mmeAddressPtr = flag.String("mmeaddr", "192.168.42.108", "IP address of the MME")
+	mmePortPtr = flag.Int("mmeport", 36412, "listening port for incoming GTP traffic")
+
+	enbMMEAddressPtr = flag.String("enbmmeaddr", "192.168.42.10", "IP address of the eNB for SCTP")
+	enbMMEPortPtr = flag.Int("enbmmeport", 36412, "destination port on the eNB for SCTP traffic")
 
 	sgwAddressPtr = flag.String("sgwaddr", "192.168.42.108", "IP address of S-GW")
 	sgwPortPtr = flag.Int("sgwport", 2152, "UDP port for GTP traffic of S-GW")
 
 	enbAddressPtr = flag.String("enbaddr", "192.168.42.10", "IP address of eNB")
-	enbPortPtr = flag.Int("enbport", 2152, "IP address of eNB")
+	enbPortPtr = flag.Int("enbport", 2152, "incoming S1-U port on the eNB")
 	
 	flag.Parse()
 }
@@ -112,7 +138,7 @@ func runUDPProxy(){
 
 	for {
 
-		glog.Info("Waiting for UDP packet")
+		glog.Info("Waiting for GTP-U/UDP packets on port ", * listenPortPtr)
 
 		nbytes,clientaddr,err := UDPProxyConnPtr.ReadFromUDP(buffer[0:])
 		if err != nil {
@@ -206,15 +232,79 @@ func runTUNproxy(){
 	}
 }*/
 
+func setupSCTPProxy() bool {
+
+	// local SCTP server
+	sctpaddr, err := extnet.ResolveSCTPAddr("sctp", fmt.Sprintf("%s:%d",*sctpListenaddressPtr,*sctpPortPtr));
+	if err!=nil {
+		glog.Error("Error:",err.Error())
+		return false
+	}
+
+	localMMEAddrPtr = sctpaddr
+
+	sctplisten, err :=extnet.ListenSCTP("sctp", localMMEAddrPtr)
+	if err!= nil {
+		glog.Error("Error:",err.Error())
+		return false
+	}
+
+	localMMEListenPtr = sctplisten
+
+
+	// sgw
+	sctpMMEaddr, err := extnet.ResolveSCTPAddr("sctp", fmt.Sprintf("%s:%d",*mmeAddressPtr,*mmePortPtr));
+	if err != nil {
+		glog.Error("Error:",err.Error())
+		return false
+	}
+
+	remoteMMEAddrPtr = sctpMMEaddr
+
+	// eNB
+	sctpeNBaddr, err := extnet.ResolveSCTPAddr("sctp", fmt.Sprintf("%s:%d",*enbAddressPtr,*enbPortPtr));
+	if err != nil {
+		glog.Error("Error:",err.Error())
+		return false
+	}
+
+	enbMMEAddrPtr = sctpeNBaddr
+
+	return true;
+}
+
+func runSCTPProxy() {
+
+	for {
+
+		glog.Info("Waiting for SCTP packets on port ", * sctpPortPtr)
+		sctpconn, err := localMMEListenPtr.AcceptSCTP()
+		if err != nil {
+			glog.Error("Error:",err.Error())
+			continue
+		}
+
+		_ = sctpconn
+
+	}
+
+}
+
 func main() {
 	glog.Info("MECProxy by Yan Grunenberger <yan.grunenberger@telefonica.com>")
+
+
 
 /*	if setupTUN(){
 		//go runTUNproxy()
 	}*/
 
+	if (setupSCTPProxy()){
+		go runSCTPProxy()
+	}
+
 	if (setupUDPProxy()){
-		glog.Info("Listening on port ", * listenPortPtr)
+		
 		glog.Info("UDP address is ", * UDPProxyConnPtr)
 		glog.Info("SGW address is ", * SGWAddrPtr)
 		glog.Info("eNB address is ", * ENBAddrPtr)
